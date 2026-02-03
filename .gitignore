@@ -1,0 +1,28 @@
+# Azure
+azuredeploy.parameters.json
+local.settings.json
+
+# Secrets
+*.key
+*.pem
+*.pfx
+secrets/
+.env
+*.secret
+*.credentials
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Node
+node_modules/

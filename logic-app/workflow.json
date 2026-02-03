@@ -1,0 +1,409 @@
+{
+    "definition": {
+        "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+        "triggers": {
+            "Recurrence": {
+                "type": "Recurrence",
+                "recurrence": {
+                    "frequency": "Day",
+                    "interval": 1
+                }
+            }
+        },
+        "actions": {
+            "Initialize_variables": {
+                "type": "InitializeVariable",
+                "inputs": {
+                    "variables": [
+                        {
+                            "name": "Snapshots",
+                            "type": "array"
+                        },
+                        {
+                            "name": "Monitors",
+                            "type": "array"
+                        },
+                        {
+                            "name": "Drifts",
+                            "type": "array"
+                        }
+                    ]
+                },
+                "runAfter": {}
+            },
+            "Query_Snapshots": {
+                "type": "Http",
+                "inputs": {
+                    "uri": "https://graph.microsoft.com/beta/admin/configurationManagement/configurationSnapshotJobs",
+                    "method": "GET",
+                    "headers": {
+                        "Content-Type": "application/json"
+                    },
+                    "authentication": {
+                        "type": "ActiveDirectoryOAuth",
+                        "authority": "https://login.microsoftonline.com",
+                        "tenant": "@parameters('tenantId')",
+                        "audience": "https://graph.microsoft.com",
+                        "clientId": "@parameters('clientId')",
+                        "secret": "@parameters('clientSecret')"
+                    }
+                },
+                "runAfter": {
+                    "Initialize_variables": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Set_Snapshots": {
+                "type": "SetVariable",
+                "inputs": {
+                    "name": "Snapshots",
+                    "value": "@body('Query_Snapshots')['value']"
+                },
+                "runAfter": {
+                    "Query_Snapshots": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Query_Monitors": {
+                "type": "Http",
+                "inputs": {
+                    "uri": "https://graph.microsoft.com/beta/admin/configurationManagement/configurationMonitors",
+                    "method": "GET",
+                    "headers": {
+                        "Content-Type": "application/json"
+                    },
+                    "authentication": {
+                        "type": "ActiveDirectoryOAuth",
+                        "authority": "https://login.microsoftonline.com",
+                        "tenant": "@parameters('tenantId')",
+                        "audience": "https://graph.microsoft.com",
+                        "clientId": "@parameters('clientId')",
+                        "secret": "@parameters('clientSecret')"
+                    }
+                },
+                "runAfter": {
+                    "Initialize_variables": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Set_Monitors": {
+                "type": "SetVariable",
+                "inputs": {
+                    "name": "Monitors",
+                    "value": "@body('Query_Monitors')['value']"
+                },
+                "runAfter": {
+                    "Query_Monitors": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Query_Drifts": {
+                "type": "Http",
+                "inputs": {
+                    "uri": "https://graph.microsoft.com/beta/admin/configurationManagement/configurationDrifts",
+                    "method": "GET",
+                    "headers": {
+                        "Content-Type": "application/json"
+                    },
+                    "authentication": {
+                        "type": "ActiveDirectoryOAuth",
+                        "authority": "https://login.microsoftonline.com",
+                        "tenant": "@parameters('tenantId')",
+                        "audience": "https://graph.microsoft.com",
+                        "clientId": "@parameters('clientId')",
+                        "secret": "@parameters('clientSecret')"
+                    }
+                },
+                "runAfter": {
+                    "Initialize_variables": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Set_Drifts": {
+                "type": "SetVariable",
+                "inputs": {
+                    "name": "Drifts",
+                    "value": "@body('Query_Drifts')['value']"
+                },
+                "runAfter": {
+                    "Query_Drifts": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Agent_Snapshots": {
+                "type": "Agent",
+                "inputs": {
+                    "parameters": {
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a Microsoft Entra ID configuration baseline analyst specializing in UTCM (Unified Tenant Configuration Management) snapshots.\n\nYour task: Analyze the snapshot data and create a concise, actionable HTML report.\n\n## Required Output Structure:\n\n### 1. Section Header\n<h3>📸 Configuration Snapshots/Baselines</h3>\n\n### 2. Summary Statistics (use colored badges)\n- Total snapshots\n- Status breakdown: Successful ✅ / Partially Successful ⚠️ / Failed ❌\n- Coverage assessment (which resource types have baselines)\n\n### 3. Data Table\nHTML table with columns:\n- Display Name\n- Status (with color indicators: green=success, orange=partial, red=failed)\n- Resource Type\n- Created Date (formatted as human-readable)\n- Last Run/Update\n\n### 4. Key Insights\n- Baseline coverage gaps (missing critical resource types)\n- Reliability concerns (frequent failures, stale baselines)\n- Recommendations for improving baseline strategy\n\n## Formatting Rules:\n- Use semantic HTML5 (tables, headings, lists)\n- Color code status: green (#28a745), orange (#fd7e14), red (#dc3545)\n- Make tables responsive with borders and padding\n- Keep text concise and business-focused\n- Highlight risks in bold\n\nOutput only valid HTML suitable for email embedding."
+                            },
+                            {
+                                "role": "user",
+                                "content": "@{variables('Snapshots')}"
+                            }
+                        ],
+                        "agentModelType": "AzureOpenAI",
+                        "agentModelSettings": {
+                            "agentHistoryReductionSettings": {
+                                "agentHistoryReductionType": "maximumTokenCountReduction",
+                                "maximumTokenCount": 128000
+                            }
+                        },
+                        "modelId": "gpt-4o-mini"
+                    }
+                },
+                "runAfter": {
+                    "Set_Snapshots": [
+                        "Succeeded"
+                    ]
+                },
+                "limit": {
+                    "count": 100
+                }
+            },
+            "Agent_Monitors": {
+                "type": "Agent",
+                "inputs": {
+                    "parameters": {
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a Microsoft Entra ID configuration monitoring specialist analyzing UTCM (Unified Tenant Configuration Management) active monitors.\n\nYour task: Evaluate the effectiveness of current monitoring configuration and provide strategic insights.\n\n## Required Output Structure:\n\n### 1. Section Header\n<h3>👁️ Active Configuration Monitors</h3>\n\n### 2. Summary Dashboard\n- Total active monitors\n- Mode distribution: Audit-only vs Remediation (with percentages)\n- Frequency analysis: Real-time, Hourly, Daily monitoring\n- Coverage score: Percentage of critical resource types being monitored\n\n### 3. Monitor Inventory Table\nHTML table with columns:\n- Display Name\n- Status (Active/Inactive with indicators)\n- Mode (Audit ℹ️ / Remediation 🔧)\n- Run Frequency (e.g., \"Every 6 hours\")\n- Scope (resource types covered)\n- Last Modified (highlight if outdated >30 days)\n\n### 4. Strategic Assessment\n- **Coverage Analysis**: Which critical areas lack monitoring?\n- **Mode Strategy**: Is the audit/remediation balance appropriate?\n- **Frequency Optimization**: Are monitors running too often/rarely?\n- **Risk Gaps**: Unmonitored high-risk configurations\n\n### 5. Actionable Recommendations\nPrioritized list with:\n1. High-priority gaps requiring new monitors\n2. Mode adjustments (audit → remediation or vice versa)\n3. Frequency optimizations\n4. Monitors that can be consolidated\n\n## Formatting Rules:\n- Use icons for visual clarity (✅❌⚠️ℹ️🔧)\n- Color code modes: blue for audit, green for remediation\n- Highlight outdated monitors in orange\n- Use bullet points for recommendations\n- Keep language executive-friendly\n\nOutput only valid HTML suitable for email embedding."
+                            },
+                            {
+                                "role": "user",
+                                "content": "@{variables('Monitors')}"
+                            }
+                        ],
+                        "agentModelType": "AzureOpenAI",
+                        "agentModelSettings": {
+                            "agentHistoryReductionSettings": {
+                                "agentHistoryReductionType": "maximumTokenCountReduction",
+                                "maximumTokenCount": 128000
+                            }
+                        },
+                        "modelId": "gpt-4o-mini"
+                    }
+                },
+                "runAfter": {
+                    "Set_Monitors": [
+                        "Succeeded"
+                    ]
+                },
+                "limit": {
+                    "count": 100
+                }
+            },
+            "Agent_Drifts": {
+                "type": "Agent",
+                "inputs": {
+                    "parameters": {
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a Microsoft Entra ID configuration compliance analyst specializing in drift detection and remediation planning.\n\nYour task: Analyze detected drifts, assess impact, and provide prioritized remediation guidance.\n\n## Response Logic:\n\n### IF NO DRIFTS (empty array):\nOutput EXACTLY:\n```html\n<h3 style=\"color: #28a745;\">✅ Configuration Drift Status</h3>\n<div style=\"background: #d4edda; border: 1px solid #c3e6cb; padding: 15px; border-radius: 5px;\">\n  <p style=\"color: #155724; font-weight: bold; margin: 0;\">✓ All Clear: No configuration drifts detected</p>\n  <p style=\"color: #155724; margin: 5px 0 0 0;\">All resources are compliant with established baselines. Continue monitoring for changes.</p>\n</div>\n```\n\n### IF DRIFTS DETECTED:\n\n#### 1. Alert Header\n<h3 style=\"color: #dc3545;\">⚠️ Configuration Drift Alert</h3>\n<div style=\"background: #f8d7da; border: 1px solid #f5c6cb; padding: 15px; border-radius: 5px; margin-bottom: 15px;\">\n  <p><strong>Drifts Detected:</strong> [COUNT] configuration deviations from baseline</p>\n  <p><strong>Risk Level:</strong> [CRITICAL/HIGH/MEDIUM/LOW] (color-coded)</p>\n  <p><strong>First Detection:</strong> [OLDEST_DRIFT_DATE]</p>\n</div>\n\n#### 2. Drift Details Table\nHTML table with columns:\n- **Severity** (Critical🔴/High🟠/Medium🟡/Low🟢)\n- **Resource Type** (e.g., Conditional Access Policy, Security Group)\n- **Affected Resource** (display name/ID)\n- **Property Drifted** (specific setting changed)\n- **Current Value** → **Expected Value** (show delta)\n- **First Detected** (date/time)\n- **Business Impact** (brief description)\n\n#### 3. Impact Analysis\n- **Security Impact**: Does this drift introduce vulnerabilities?\n- **Compliance Impact**: Regulatory/policy violations?\n- **Operational Impact**: Service disruptions, user experience?\n- **Scope**: How many users/resources affected?\n\n#### 4. Drift Patterns\nGroup similar drifts:\n- \"5 Conditional Access policies changed same setting\"\n- \"Multiple security groups lost members\"\n- Identify if drifts are:\n  - Intentional changes (not yet baselined)\n  - Unauthorized modifications\n  - Configuration errors\n  - Tool/automation issues\n\n#### 5. Prioritized Remediation Plan\nNumbered action list:\n1. **CRITICAL** (fix within 4 hours): [specific actions]\n2. **HIGH** (fix within 24 hours): [specific actions]\n3. **MEDIUM** (fix within 1 week): [specific actions]\n4. **LOW** (review next cycle): [specific actions]\n\nFor each:\n- What to do\n- How to fix (manual steps or automation)\n- Who should handle it (role)\n- Verification steps\n\n#### 6. Root Cause Investigation\nQuestions to ask:\n- Was this an approved change not yet baselined?\n- Is there unauthorized access/modification?\n- Is this a recurring pattern indicating systemic issue?\n\n## Severity Classification:\n- **CRITICAL**: Security controls disabled, broad access granted, compliance violation\n- **HIGH**: Significant config changes, affects many users, reduces security posture\n- **MEDIUM**: Minor config changes, limited scope, no immediate risk\n- **LOW**: Cosmetic changes, metadata updates, minimal impact\n\n## Formatting Rules:\n- Use color-coded severity badges\n- Make tables sortable-looking (header row styled)\n- Use alert boxes for critical items\n- Include timestamps in human-readable format\n- Add icons for visual scanning: 🔴🟠🟡🟢✅❌⚠️\n- Keep technical jargon minimal, explain impacts in business terms\n\nOutput only valid HTML suitable for email embedding."
+                            },
+                            {
+                                "role": "user",
+                                "content": "@{variables('Drifts')}"
+                            }
+                        ],
+                        "agentModelType": "AzureOpenAI",
+                        "agentModelSettings": {
+                            "agentHistoryReductionSettings": {
+                                "agentHistoryReductionType": "maximumTokenCountReduction",
+                                "maximumTokenCount": 128000
+                            }
+                        },
+                        "modelId": "gpt-4o-mini"
+                    }
+                },
+                "runAfter": {
+                    "Set_Drifts": [
+                        "Succeeded"
+                    ]
+                },
+                "limit": {
+                    "count": 100
+                }
+            },
+            "Agent_Analysis": {
+                "type": "Agent",
+                "inputs": {
+                    "parameters": {
+                        "messages": [
+                            {
+                                "role": "system",
+                                "content": "You are a Microsoft Entra ID configuration management system creating a concise, table-based daily report.\n\nYou will receive three specialized HTML reports about snapshots, monitors, and drifts.\n\nYour task: Create a COMPACT, TABLE-CENTRIC HTML report optimized for quick scanning.\n\n## Output Structure:\n\n### 1. Status Header (Single Line)\n```html\n<div style=\"background: [#28a745 for OK | #ffc107 for warning | #dc3545 for critical]; color: white; padding: 15px; text-align: center; font-size: 18px; font-weight: bold;\">\n  [🟢 ALL CLEAR | 🟡 ATTENTION REQUIRED | 🔴 CRITICAL ALERT] - Entra ID Configuration Report\n</div>\n```\n\n### 2. Executive Dashboard (Single Table)\n```html\n<table style=\"width: 100%; border-collapse: collapse; margin: 20px 0; font-family: Arial, sans-serif;\">\n  <thead>\n    <tr style=\"background: #0078D4; color: white;\">\n      <th style=\"padding: 12px; text-align: left; border: 1px solid #ddd;\">Category</th>\n      <th style=\"padding: 12px; text-align: center; border: 1px solid #ddd;\">Status</th>\n      <th style=\"padding: 12px; text-align: center; border: 1px solid #ddd;\">Count</th>\n      <th style=\"padding: 12px; text-align: left; border: 1px solid #ddd;\">Key Findings</th>\n      <th style=\"padding: 12px; text-align: left; border: 1px solid #ddd;\">Action</th>\n    </tr>\n  </thead>\n  <tbody>\n    <tr style=\"background: [color based on status];\">\n      <td style=\"padding: 10px; border: 1px solid #ddd;\"><strong>📸 Snapshots</strong></td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; text-align: center;\">[✅❌⚠️]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; text-align: center;\">[X total / Y successful]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd;\">[One-line summary from Snapshots agent]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd;\">[Action if needed, or \"None\"]</td>\n    </tr>\n    <tr style=\"background: [color based on status];\">\n      <td style=\"padding: 10px; border: 1px solid #ddd;\"><strong>👁️ Monitors</strong></td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; text-align: center;\">[✅❌⚠️]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; text-align: center;\">[X active / Y%% coverage]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd;\">[One-line summary from Monitors agent]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd;\">[Action if needed, or \"None\"]</td>\n    </tr>\n    <tr style=\"background: [#f8d7da if drifts else #d4edda];\">\n      <td style=\"padding: 10px; border: 1px solid #ddd;\"><strong>⚠️ Drifts</strong></td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; text-align: center; font-size: 18px;\">[✅ if 0, else 🔴]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; text-align: center; font-weight: bold;\">[X detected]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd;\">[One-line summary: \"All compliant\" or \"X critical, Y high priority\"]</td>\n      <td style=\"padding: 10px; border: 1px solid #ddd; font-weight: bold;\">[\"None\" or \"Review immediately\"]</td>\n    </tr>\n  </tbody>\n</table>\n```\n\n### 3. Drift Details (ONLY if drifts exist)\n```html\n<h3 style=\"color: #dc3545; margin: 20px 0 10px 0;\">🔴 Configuration Drift Details</h3>\n<table style=\"width: 100%; border-collapse: collapse; font-family: Arial, sans-serif; font-size: 14px;\">\n  <thead>\n    <tr style=\"background: #dc3545; color: white;\">\n      <th style=\"padding: 10px; border: 1px solid #ddd;\">Priority</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd;\">Resource Type</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd;\">Resource Name</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd;\">What Changed</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd;\">Impact</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd;\">Fix By</th>\n    </tr>\n  </thead>\n  <tbody>\n    <!-- Extract key drifts from Drifts agent report and format as table rows -->\n    <tr style=\"background: [#ffe6e6 for critical, #fff3cd for high, white for others];\">\n      <td style=\"padding: 8px; border: 1px solid #ddd; text-align: center;\">[🔴 CRIT | 🟠 HIGH | 🟡 MED | 🟢 LOW]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Resource type]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Display name]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Property: Current → Expected]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Brief impact]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Deadline]</td>\n    </tr>\n  </tbody>\n</table>\n```\n\n### 4. Actions Required (Compact List)\n```html\n<h3 style=\"color: #0078D4; margin: 20px 0 10px 0;\">✅ Action Items</h3>\n<table style=\"width: 100%; border-collapse: collapse; font-family: Arial, sans-serif;\">\n  <thead>\n    <tr style=\"background: #0078D4; color: white;\">\n      <th style=\"padding: 10px; border: 1px solid #ddd; text-align: left;\">Priority</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd; text-align: left;\">Action</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd; text-align: left;\">Owner</th>\n      <th style=\"padding: 10px; border: 1px solid #ddd; text-align: center;\">Deadline</th>\n    </tr>\n  </thead>\n  <tbody>\n    <!-- List actionable items from all three reports -->\n    <tr>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[🔴 URGENT | 🟠 HIGH | 🟡 NORMAL]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Specific action item]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd;\">[Team/Role]</td>\n      <td style=\"padding: 8px; border: 1px solid #ddd; text-align: center;\">[Date/Time]</td>\n    </tr>\n  </tbody>\n</table>\n```\n\n### 5. Footer (Minimal)\n```html\n<div style=\"margin-top: 30px; padding-top: 15px; border-top: 2px solid #ddd; font-size: 12px; color: #666;\">\n  <strong>Generated:</strong> [Timestamp] UTC | <strong>Next Report:</strong> Tomorrow same time | <strong>Data Source:</strong> Microsoft Graph UTCM API\n</div>\n```\n\n## Synthesis Rules:\n\n### Extract from Specialized Reports:\n1. **From Snapshots**: Total count, success rate, any critical failures\n2. **From Monitors**: Active count, coverage %, gaps needing attention\n3. **From Drifts**: Count, severity breakdown, top 5 most critical drifts\n\n### Status Color Logic:\n- **Green (#d4edda)**: No drifts, >90% success rate, good coverage\n- **Yellow (#fff3cd)**: 1-5 low/medium drifts, 70-90% success, some gaps\n- **Red (#f8d7da)**: Any critical drift, <70% success, major gaps\n\n### Keep It Concise:\n- One-line summaries, not paragraphs\n- Show only critical information in main table\n- Limit drift details to top 10 most severe\n- Limit action items to top 5 priorities\n- NO embedding of full specialized reports (extract key data only)\n\n### Table Styling:\n- Use consistent borders and padding\n- Color-code severity/status clearly\n- Make tables mobile-friendly (avoid excessive width)\n- Use icons for quick visual scanning (✅❌⚠️🔴🟠🟡🟢)\n\n## Output Requirements:\n- Total length: Aim for email that fits on 2-3 screens\n- Must be scannable in under 30 seconds\n- All critical info visible without scrolling past first table\n- Valid HTML with inline CSS\n- Professional appearance suitable for executives\n\nProvide ONLY the compact HTML output, no explanations."
+                            },
+                            {
+                                "role": "user",
+                                "content": "SNAPSHOTS ANALYSIS:\n@{if(equals(actions('Agent_Snapshots').status, 'Succeeded'), outputs('Agent_Snapshots')?['lastAssistantMessage'], '<p style=\"color: red;\">Snapshot analysis failed or unavailable</p>')}"
+                            },
+                            {
+                                "role": "user",
+                                "content": "MONITORS ANALYSIS:\n@{if(equals(actions('Agent_Monitors').status, 'Succeeded'), outputs('Agent_Monitors')?['lastAssistantMessage'], '<p style=\"color: red;\">Monitor analysis failed or unavailable</p>')}"
+                            },
+                            {
+                                "role": "user",
+                                "content": "DRIFTS ANALYSIS:\n@{if(equals(actions('Agent_Drifts').status, 'Succeeded'), outputs('Agent_Drifts')?['lastAssistantMessage'], '<p style=\"color: red;\">Drift analysis failed or unavailable</p>')}"
+                            }
+                        ],
+                        "agentModelType": "AzureOpenAI",
+                        "agentModelSettings": {
+                            "agentHistoryReductionSettings": {
+                                "agentHistoryReductionType": "maximumTokenCountReduction",
+                                "maximumTokenCount": 128000
+                            }
+                        },
+                        "modelId": "gpt-4o"
+                    }
+                },
+                "runAfter": {
+                    "Agent_Snapshots": [
+                        "Succeeded",
+                        "Failed"
+                    ],
+                    "Agent_Monitors": [
+                        "Succeeded",
+                        "Failed"
+                    ],
+                    "Agent_Drifts": [
+                        "Succeeded",
+                        "Failed"
+                    ]
+                },
+                "limit": {
+                    "count": 100
+                }
+            },
+            "Condition_Check_Drifts": {
+                "type": "If",
+                "expression": {
+                    "and": [
+                        {
+                            "greater": [
+                                "@length(variables('Drifts'))",
+                                0
+                            ]
+                        }
+                    ]
+                },
+                "actions": {
+                    "Send_Alert_Email": {
+                        "type": "ApiConnection",
+                        "inputs": {
+                            "host": {
+                                "connection": {
+                                    "name": "@parameters('$connections')['office365']['connectionId']"
+                                }
+                            },
+                            "method": "post",
+                            "body": {
+                                "To": "@parameters('emailRecipient')",
+                                "Subject": "🚨 URGENT: Configuration Drifts Detected - @{length(variables('Drifts'))} Issue(s) - @{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
+                                "Body": "<html><head><style>body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; } .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; } .header h1 { margin: 0; font-size: 28px; } .content { background-color: #ffffff; padding: 30px; } .info-box { background-color: #f8f9fa; border-left: 4px solid #0078D4; padding: 15px; margin: 20px 0; } .metrics-table { width: 100%; border-collapse: collapse; margin: 20px 0; } .metrics-table td { padding: 12px; border: 1px solid #dee2e6; } .metrics-table tr:nth-child(odd) { background-color: #f8f9fa; } .alert-row { background-color: #fff3cd !important; font-weight: bold; } .section { margin: 30px 0; } .section h2 { color: #0078D4; border-bottom: 2px solid #0078D4; padding-bottom: 10px; } .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #6c757d; border-radius: 0 0 8px 8px; }</style></head><body><div class='header'><h1>⚠️ Configuration Drift Alert</h1><p style='margin: 10px 0 0 0; font-size: 16px;'>Immediate Attention Required</p></div><div class='content'><div class='info-box'><strong>Report Generated:</strong> @{formatDateTime(utcNow(), 'yyyy-MM-dd HH:mm:ss')} UTC<br><strong>Workflow Run ID:</strong> @{workflow().run.name}</div><div class='section'><h2>📊 Configuration Summary</h2><table class='metrics-table'><tr><td><strong>Snapshots Analyzed</strong></td><td>@{length(variables('Snapshots'))}</td></tr><tr><td><strong>Active Monitors</strong></td><td>@{length(variables('Monitors'))}</td></tr><tr class='alert-row'><td><strong>⚠️ Configuration Drifts Detected</strong></td><td>@{length(variables('Drifts'))}</td></tr></table></div><div class='section'><h2>🤖 AI-Powered Analysis</h2>@{outputs('Agent_Analysis')?['lastAssistantMessage']}</div></div><div class='footer'><p>This is an automated report generated by Azure Logic Apps with AI-powered analysis using GPT-4.</p><p>For questions or issues, contact your IT operations team.</p></div></body></html>",
+                                "Importance": "High"
+                            },
+                            "path": "/v2/Mail"
+                        }
+                    }
+                },
+                "else": {
+                    "actions": {
+                        "Send_Success_Email": {
+                            "type": "ApiConnection",
+                            "inputs": {
+                                "host": {
+                                    "connection": {
+                                        "name": "@parameters('$connections')['office365']['connectionId']"
+                                    }
+                                },
+                                "method": "post",
+                                "body": {
+                                    "To": "@parameters('emailRecipient')",
+                                    "Subject": "✅ Configuration Status: All Systems Compliant - @{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
+                                    "Body": "<html><head><style>body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; } .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; } .header h1 { margin: 0; font-size: 28px; } .content { background-color: #ffffff; padding: 30px; } .info-box { background-color: #f8f9fa; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; } .metrics-table { width: 100%; border-collapse: collapse; margin: 20px 0; } .metrics-table td { padding: 12px; border: 1px solid #dee2e6; } .metrics-table tr:nth-child(odd) { background-color: #f8f9fa; } .success-row { background-color: #d4edda !important; font-weight: bold; color: #155724; } .section { margin: 30px 0; } .section h2 { color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 10px; } .success-badge { background-color: #28a745; color: white; padding: 10px 20px; border-radius: 20px; display: inline-block; margin: 20px 0; font-size: 18px; } .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #6c757d; border-radius: 0 0 8px 8px; }</style></head><body><div class='header'><h1>✅ Configuration Compliance Report</h1><p style='margin: 10px 0 0 0; font-size: 16px;'>All Systems Operating Within Baseline</p></div><div class='content'><div class='info-box'><strong>Report Generated:</strong> @{formatDateTime(utcNow(), 'yyyy-MM-dd HH:mm:ss')} UTC<br><strong>Workflow Run ID:</strong> @{workflow().run.name}</div><div style='text-align: center;'><div class='success-badge'>🎉 Zero Configuration Drifts Detected</div></div><div class='section'><h2>📊 Configuration Summary</h2><table class='metrics-table'><tr><td><strong>Snapshots Analyzed</strong></td><td>@{length(variables('Snapshots'))}</td></tr><tr><td><strong>Active Monitors</strong></td><td>@{length(variables('Monitors'))}</td></tr><tr class='success-row'><td><strong>✅ Configuration Drifts</strong></td><td>0 - All Compliant</td></tr></table></div><div class='section'><h2>🤖 AI-Powered Analysis</h2>@{outputs('Agent_Analysis')?['lastAssistantMessage']}</div></div><div class='footer'><p>This is an automated report generated by Azure Logic Apps with AI-powered analysis using GPT-4.</p><p>For questions or issues, contact your IT operations team.</p></div></body></html>",
+                                    "Importance": "Normal"
+                                },
+                                "path": "/v2/Mail"
+                            }
+                        }
+                    }
+                },
+                "runAfter": {
+                    "Agent_Analysis": [
+                        "Succeeded"
+                    ]
+                }
+            },
+            "Log_Execution_Metrics": {
+                "type": "Compose",
+                "inputs": {
+                    "workflowRunId": "@workflow().run.name",
+                    "workflowName": "@workflow().name",
+                    "reportDate": "@utcNow()",
+                    "metrics": {
+                        "snapshotsCount": "@length(variables('Snapshots'))",
+                        "monitorsCount": "@length(variables('Monitors'))",
+                        "driftsCount": "@length(variables('Drifts'))",
+                        "criticalIssuesDetected": "@greater(length(variables('Drifts')), 0)",
+                        "allAgentsSucceeded": "@and(equals(actions('Agent_Snapshots').status, 'Succeeded'), and(equals(actions('Agent_Monitors').status, 'Succeeded'), equals(actions('Agent_Drifts').status, 'Succeeded')))"
+                    },
+                    "agentStatuses": {
+                        "snapshotAgent": "@actions('Agent_Snapshots').status",
+                        "monitorAgent": "@actions('Agent_Monitors').status",
+                        "driftAgent": "@actions('Agent_Drifts').status",
+                        "analysisAgent": "@actions('Agent_Analysis').status"
+                    }
+                },
+                "runAfter": {
+                    "Condition_Check_Drifts": [
+                        "Succeeded",
+                        "Failed",
+                        "Skipped"
+                    ]
+                }
+            }
+        },
+        "parameters": {
+            "tenantId": {
+                "type": "string",
+                "metadata": {
+                    "description": "Azure AD Tenant ID"
+                }
+            },
+            "clientId": {
+                "type": "string",
+                "metadata": {
+                    "description": "Application (client) ID for Graph API authentication"
+                }
+            },
+            "clientSecret": {
+                "type": "securestring",
+                "metadata": {
+                    "description": "Client secret for Graph API authentication"
+                }
+            },
+            "emailRecipient": {
+                "type": "string",
+                "metadata": {
+                    "description": "Email address to receive reports"
+                }
+            },
+            "$connections": {
+                "type": "Object",
+                "defaultValue": {}
+            }
+        }
+    },
+    "parameters": {}
+}

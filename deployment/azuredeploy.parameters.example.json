@@ -1,0 +1,37 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentParameters.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "logicAppName": {
+            "value": "utcm-drift-monitor"
+        },
+        "tenantId": {
+            "value": "YOUR_TENANT_ID_HERE"
+        },
+        "clientId": {
+            "value": "YOUR_CLIENT_ID_HERE"
+        },
+        "clientSecret": {
+            "reference": {
+                "keyVault": {
+                    "id": "/subscriptions/YOUR_SUB/resourceGroups/YOUR_RG/providers/Microsoft.KeyVault/vaults/YOUR_KEYVAULT"
+                },
+                "secretName": "GraphAPIClientSecret"
+            }
+        },
+        "emailRecipient": {
+            "value": "admin@example.com"
+        },
+        "azureOpenAIEndpoint": {
+            "value": "https://YOUR_OPENAI_RESOURCE.openai.azure.com/"
+        },
+        "azureOpenAIApiKey": {
+            "reference": {
+                "keyVault": {
+                    "id": "/subscriptions/YOUR_SUB/resourceGroups/YOUR_RG/providers/Microsoft.KeyVault/vaults/YOUR_KEYVAULT"
+                },
+                "secretName": "AzureOpenAIApiKey"
+            }
+        }
+    }
+}

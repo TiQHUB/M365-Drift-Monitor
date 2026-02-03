@@ -1,0 +1,438 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2019-04-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "logicAppName": {
+            "type": "string",
+            "defaultValue": "utcm-drift-monitor",
+            "metadata": {
+                "description": "Name of the Logic App"
+            }
+        },
+        "location": {
+            "type": "string",
+            "defaultValue": "[resourceGroup().location]",
+            "metadata": {
+                "description": "Location for all resources"
+            }
+        },
+        "tenantId": {
+            "type": "string",
+            "metadata": {
+                "description": "Azure AD Tenant ID"
+            }
+        },
+        "clientId": {
+            "type": "string",
+            "metadata": {
+                "description": "Application (client) ID"
+            }
+        },
+        "clientSecret": {
+            "type": "securestring",
+            "metadata": {
+                "description": "Client secret for authentication"
+            }
+        },
+        "emailRecipient": {
+            "type": "string",
+            "metadata": {
+                "description": "Email address to receive reports"
+            }
+        },
+        "office365ConnectionId": {
+            "type": "string",
+            "metadata": {
+                "description": "Existing Office 365 connection resource ID"
+            }
+        }
+    },
+    "variables": {},
+    "resources": [
+        {
+            "type": "Microsoft.Logic/workflows",
+            "apiVersion": "2019-05-01",
+            "name": "[parameters('logicAppName')]",
+            "location": "[parameters('location')]",
+            "properties": {
+                "state": "Enabled",
+                "definition": {
+                    "$schema": "https://schema.management.azure.com/providers/Microsoft.Logic/schemas/2016-06-01/workflowdefinition.json#",
+                    "triggers": {
+                        "Recurrence": {
+                            "type": "Recurrence",
+                            "recurrence": {
+                                "frequency": "Day",
+                                "interval": 1,
+                                "timeZone": "Romance Standard Time"
+                            }
+                        }
+                    },
+                    "actions": {
+                        "Initialize_variables": {
+                            "type": "InitializeVariable",
+                            "inputs": {
+                                "variables": [
+                                    {
+                                        "name": "Snapshots",
+                                        "type": "array"
+                                    },
+                                    {
+                                        "name": "Monitors",
+                                        "type": "array"
+                                    },
+                                    {
+                                        "name": "Drifts",
+                                        "type": "array"
+                                    }
+                                ]
+                            },
+                            "runAfter": {}
+                        },
+                        "Query_Snapshots": {
+                            "type": "Http",
+                            "inputs": {
+                                "uri": "https://graph.microsoft.com/beta/admin/configurationManagement/configurationSnapshotJobs",
+                                "method": "GET",
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "authentication": {
+                                    "type": "ActiveDirectoryOAuth",
+                                    "authority": "https://login.microsoftonline.com",
+                                    "tenant": "[parameters('tenantId')]",
+                                    "audience": "https://graph.microsoft.com",
+                                    "clientId": "[parameters('clientId')]",
+                                    "secret": "[parameters('clientSecret')]"
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_variables": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Set_Snapshots": {
+                            "type": "SetVariable",
+                            "inputs": {
+                                "name": "Snapshots",
+                                "value": "@body('Query_Snapshots')['value']"
+                            },
+                            "runAfter": {
+                                "Query_Snapshots": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Query_Monitors": {
+                            "type": "Http",
+                            "inputs": {
+                                "uri": "https://graph.microsoft.com/beta/admin/configurationManagement/configurationMonitors",
+                                "method": "GET",
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "authentication": {
+                                    "type": "ActiveDirectoryOAuth",
+                                    "authority": "https://login.microsoftonline.com",
+                                    "tenant": "[parameters('tenantId')]",
+                                    "audience": "https://graph.microsoft.com",
+                                    "clientId": "[parameters('clientId')]",
+                                    "secret": "[parameters('clientSecret')]"
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_variables": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Set_Monitors": {
+                            "type": "SetVariable",
+                            "inputs": {
+                                "name": "Monitors",
+                                "value": "@body('Query_Monitors')['value']"
+                            },
+                            "runAfter": {
+                                "Query_Monitors": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Query_Drifts": {
+                            "type": "Http",
+                            "inputs": {
+                                "uri": "https://graph.microsoft.com/beta/admin/configurationManagement/configurationDrifts",
+                                "method": "GET",
+                                "headers": {
+                                    "Content-Type": "application/json"
+                                },
+                                "authentication": {
+                                    "type": "ActiveDirectoryOAuth",
+                                    "authority": "https://login.microsoftonline.com",
+                                    "tenant": "[parameters('tenantId')]",
+                                    "audience": "https://graph.microsoft.com",
+                                    "clientId": "[parameters('clientId')]",
+                                    "secret": "[parameters('clientSecret')]"
+                                }
+                            },
+                            "runAfter": {
+                                "Initialize_variables": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Set_Drifts": {
+                            "type": "SetVariable",
+                            "inputs": {
+                                "name": "Drifts",
+                                "value": "@body('Query_Drifts')['value']"
+                            },
+                            "runAfter": {
+                                "Query_Drifts": [
+                                    "Succeeded"
+                                ]
+                            }
+                        },
+                        "Agent_Snapshots": {
+                            "type": "Agent",
+                            "inputs": {
+                                "parameters": {
+                                    "messages": [
+                                        {
+                                            "role": "system",
+                                            "content": "You are a configuration baseline analyst. Analyze the snapshot data and create an HTML-formatted summary.\n\nYour output MUST be valid HTML with:\n1. A clear heading\n2. An HTML table with columns: Display Name, Status, Resource Type, Created Date\n3. A summary section highlighting:\n   - Total number of snapshots\n   - Number of successful vs partially successful snapshots\n   - Any concerns about baseline reliability\n\nFormat your response as HTML that can be embedded directly in an email body."
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": "@{variables('Snapshots')}"
+                                        }
+                                    ],
+                                    "agentModelType": "AzureOpenAI",
+                                    "agentModelSettings": {
+                                        "agentHistoryReductionSettings": {
+                                            "agentHistoryReductionType": "maximumTokenCountReduction",
+                                            "maximumTokenCount": 128000
+                                        }
+                                    },
+                                    "modelId": "gpt-4o-mini"
+                                }
+                            },
+                            "runAfter": {
+                                "Set_Snapshots": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "limit": {
+                                "count": 100
+                            }
+                        },
+                        "Agent_Monitors": {
+                            "type": "Agent",
+                            "inputs": {
+                                "parameters": {
+                                    "messages": [
+                                        {
+                                            "role": "system",
+                                            "content": "You are a configuration monitoring specialist. Analyze the monitor data and create an HTML-formatted summary.\n\nYour output MUST be valid HTML with:\n1. A clear heading\n2. An HTML table with columns: Display Name, Status, Mode, Run Frequency (hours), Last Modified\n3. A summary section highlighting:\n   - Total number of active monitors\n   - Monitor coverage assessment\n   - Whether monitors are in audit-only or remediation mode\n   - Recommendations for monitor configuration\n\nFormat your response as HTML that can be embedded directly in an email body."
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": "@{variables('Monitors')}"
+                                        }
+                                    ],
+                                    "agentModelType": "AzureOpenAI",
+                                    "agentModelSettings": {
+                                        "agentHistoryReductionSettings": {
+                                            "agentHistoryReductionType": "maximumTokenCountReduction",
+                                            "maximumTokenCount": 128000
+                                        }
+                                    },
+                                    "modelId": "gpt-4o-mini"
+                                }
+                            },
+                            "runAfter": {
+                                "Set_Monitors": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "limit": {
+                                "count": 100
+                            }
+                        },
+                        "Agent_Drifts": {
+                            "type": "Agent",
+                            "inputs": {
+                                "parameters": {
+                                    "messages": [
+                                        {
+                                            "role": "system",
+                                            "content": "You are a configuration compliance analyst. Analyze the drift data and create an HTML-formatted summary.\n\nIf there are NO drifts (empty array or zero items):\n- Output: '<h3>✅ Configuration Drift Status</h3><p style=\"color: green; font-weight: bold;\">No configuration drifts detected. All configurations are compliant with baselines.</p>'\n\nIf there ARE drifts, your output MUST be valid HTML with:\n1. A clear heading with a warning icon (⚠️)\n2. An HTML table with columns: Resource Type, Affected Resource, Property Changed, Current Value, Expected Value, First Detected\n3. A summary section highlighting:\n   - Total number of drifts\n   - Severity assessment (critical, high, medium, low)\n   - Most common drift patterns\n   - Recommended remediation actions prioritized by severity\n\nFormat your response as HTML that can be embedded directly in an email body."
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": "@{variables('Drifts')}"
+                                        }
+                                    ],
+                                    "agentModelType": "AzureOpenAI",
+                                    "agentModelSettings": {
+                                        "agentHistoryReductionSettings": {
+                                            "agentHistoryReductionType": "maximumTokenCountReduction",
+                                            "maximumTokenCount": 128000
+                                        }
+                                    },
+                                    "modelId": "gpt-4o-mini"
+                                }
+                            },
+                            "runAfter": {
+                                "Set_Drifts": [
+                                    "Succeeded"
+                                ]
+                            },
+                            "limit": {
+                                "count": 100
+                            }
+                        },
+                        "Agent_Analysis": {
+                            "type": "Agent",
+                            "inputs": {
+                                "parameters": {
+                                    "messages": [
+                                        {
+                                            "role": "system",
+                                            "content": "You are an IT infrastructure analyst creating an executive summary. You will receive HTML-formatted analysis from three specialized agents about:\n1. Configuration Snapshots/Baselines\n2. Active Monitors\n3. Configuration Drifts\n\nYour task is to synthesize these into a comprehensive HTML-formatted executive summary.\n\nYour output MUST be valid HTML including:\n\n1. **Executive Summary** section with:\n   - Overall health status (use color coding: green for good, orange for warning, red for critical)\n   - Key metrics at a glance\n\n2. **Critical Findings** section (if any) with:\n   - High-priority issues requiring immediate attention\n   - Risk assessment\n\n3. **Detailed Analysis** section including the three agent reports\n\n4. **Recommendations** section with:\n   - Prioritized action items (use numbered list)\n   - Timeline recommendations (immediate, short-term, long-term)\n\n5. **Next Steps** section with clear, actionable tasks\n\nUse proper HTML formatting:\n- Headers: <h2>, <h3>\n- Lists: <ul>, <ol>\n- Emphasis: <strong>, <em>\n- Color coding: style=\"color: green/orange/red\"\n- Spacing: <p>, <br>\n- Dividers: <hr>\n\nMake it professional, scannable, and actionable for IT leadership."
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": "SNAPSHOTS ANALYSIS:\n@{if(equals(actions('Agent_Snapshots').status, 'Succeeded'), outputs('Agent_Snapshots')?['lastAssistantMessage'], '<p style=\"color: red;\">Snapshot analysis failed or unavailable</p>')}"
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": "MONITORS ANALYSIS:\n@{if(equals(actions('Agent_Monitors').status, 'Succeeded'), outputs('Agent_Monitors')?['lastAssistantMessage'], '<p style=\"color: red;\">Monitor analysis failed or unavailable</p>')}"
+                                        },
+                                        {
+                                            "role": "user",
+                                            "content": "DRIFTS ANALYSIS:\n@{if(equals(actions('Agent_Drifts').status, 'Succeeded'), outputs('Agent_Drifts')?['lastAssistantMessage'], '<p style=\"color: red;\">Drift analysis failed or unavailable</p>')}"
+                                        }
+                                    ],
+                                    "agentModelType": "AzureOpenAI",
+                                    "agentModelSettings": {
+                                        "agentHistoryReductionSettings": {
+                                            "agentHistoryReductionType": "maximumTokenCountReduction",
+                                            "maximumTokenCount": 128000
+                                        }
+                                    },
+                                    "modelId": "gpt-4o"
+                                }
+                            },
+                            "runAfter": {
+                                "Agent_Snapshots": [
+                                    "Succeeded",
+                                    "Failed"
+                                ],
+                                "Agent_Monitors": [
+                                    "Succeeded",
+                                    "Failed"
+                                ],
+                                "Agent_Drifts": [
+                                    "Succeeded",
+                                    "Failed"
+                                ]
+                            },
+                            "limit": {
+                                "count": 100
+                            }
+                        },
+                        "Condition_Check_Drifts": {
+                            "type": "If",
+                            "expression": {
+                                "and": [
+                                    {
+                                        "greater": [
+                                            "@length(variables('Drifts'))",
+                                            0
+                                        ]
+                                    }
+                                ]
+                            },
+                            "actions": {
+                                "Send_Alert_Email": {
+                                    "type": "ApiConnection",
+                                    "inputs": {
+                                        "host": {
+                                            "connection": {
+                                                "name": "@parameters('$connections')['office365']['connectionId']"
+                                            }
+                                        },
+                                        "method": "post",
+                                        "body": {
+                                            "To": "[parameters('emailRecipient')]",
+                                            "Subject": "🚨 URGENT: Configuration Drifts Detected - @{length(variables('Drifts'))} Issue(s) - @{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
+                                            "Body": "<html><head><style>body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; } .header { background: linear-gradient(135deg, #ff6b6b 0%, #ee5a6f 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; } .header h1 { margin: 0; font-size: 28px; } .content { background-color: #ffffff; padding: 30px; } .info-box { background-color: #f8f9fa; border-left: 4px solid #0078D4; padding: 15px; margin: 20px 0; } .metrics-table { width: 100%; border-collapse: collapse; margin: 20px 0; } .metrics-table td { padding: 12px; border: 1px solid #dee2e6; } .metrics-table tr:nth-child(odd) { background-color: #f8f9fa; } .alert-row { background-color: #fff3cd !important; font-weight: bold; } .section { margin: 30px 0; } .section h2 { color: #0078D4; border-bottom: 2px solid #0078D4; padding-bottom: 10px; } .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #6c757d; border-radius: 0 0 8px 8px; }</style></head><body><div class='header'><h1>⚠️ Configuration Drift Alert</h1><p style='margin: 10px 0 0 0; font-size: 16px;'>Immediate Attention Required</p></div><div class='content'><div class='info-box'><strong>Report Generated:</strong> @{formatDateTime(utcNow(), 'yyyy-MM-dd HH:mm:ss')} UTC<br><strong>Workflow Run ID:</strong> @{workflow().run.name}</div><div class='section'><h2>📊 Configuration Summary</h2><table class='metrics-table'><tr><td><strong>Snapshots Analyzed</strong></td><td>@{length(variables('Snapshots'))}</td></tr><tr><td><strong>Active Monitors</strong></td><td>@{length(variables('Monitors'))}</td></tr><tr class='alert-row'><td><strong>⚠️ Configuration Drifts Detected</strong></td><td>@{length(variables('Drifts'))}</td></tr></table></div><div class='section'><h2>🤖 AI-Powered Analysis</h2>@{outputs('Agent_Analysis')?['lastAssistantMessage']}</div></div><div class='footer'><p>This is an automated report generated by Azure Logic Apps with AI-powered analysis using GPT-4.</p><p>For questions or issues, contact your IT operations team.</p></div></body></html>",
+                                            "Importance": "High"
+                                        },
+                                        "path": "/v2/Mail"
+                                    }
+                                }
+                            },
+                            "else": {
+                                "actions": {
+                                    "Send_Success_Email": {
+                                        "type": "ApiConnection",
+                                        "inputs": {
+                                            "host": {
+                                                "connection": {
+                                                    "name": "@parameters('$connections')['office365']['connectionId']"
+                                                }
+                                            },
+                                            "method": "post",
+                                            "body": {
+                                                "To": "[parameters('emailRecipient')]",
+                                                "Subject": "✅ Configuration Status: All Systems Compliant - @{formatDateTime(utcNow(), 'yyyy-MM-dd')}",
+                                                "Body": "<html><head><style>body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; line-height: 1.6; color: #333; max-width: 1200px; margin: 0 auto; } .header { background: linear-gradient(135deg, #28a745 0%, #20c997 100%); color: white; padding: 30px; text-align: center; border-radius: 8px 8px 0 0; } .header h1 { margin: 0; font-size: 28px; } .content { background-color: #ffffff; padding: 30px; } .info-box { background-color: #f8f9fa; border-left: 4px solid #28a745; padding: 15px; margin: 20px 0; } .metrics-table { width: 100%; border-collapse: collapse; margin: 20px 0; } .metrics-table td { padding: 12px; border: 1px solid #dee2e6; } .metrics-table tr:nth-child(odd) { background-color: #f8f9fa; } .success-row { background-color: #d4edda !important; font-weight: bold; color: #155724; } .section { margin: 30px 0; } .section h2 { color: #28a745; border-bottom: 2px solid #28a745; padding-bottom: 10px; } .success-badge { background-color: #28a745; color: white; padding: 10px 20px; border-radius: 20px; display: inline-block; margin: 20px 0; font-size: 18px; } .footer { background-color: #f8f9fa; padding: 20px; text-align: center; font-size: 14px; color: #6c757d; border-radius: 0 0 8px 8px; }</style></head><body><div class='header'><h1>✅ Configuration Compliance Report</h1><p style='margin: 10px 0 0 0; font-size: 16px;'>All Systems Operating Within Baseline</p></div><div class='content'><div class='info-box'><strong>Report Generated:</strong> @{formatDateTime(utcNow(), 'yyyy-MM-dd HH:mm:ss')} UTC<br><strong>Workflow Run ID:</strong> @{workflow().run.name}</div><div style='text-align: center;'><div class='success-badge'>🎉 Zero Configuration Drifts Detected</div></div><div class='section'><h2>📊 Configuration Summary</h2><table class='metrics-table'><tr><td><strong>Snapshots Analyzed</strong></td><td>@{length(variables('Snapshots'))}</td></tr><tr><td><strong>Active Monitors</strong></td><td>@{length(variables('Monitors'))}</td></tr><tr class='success-row'><td><strong>✅ Configuration Drifts</strong></td><td>0 - All Compliant</td></tr></table></div><div class='section'><h2>🤖 AI-Powered Analysis</h2>@{outputs('Agent_Analysis')?['lastAssistantMessage']}</div></div><div class='footer'><p>This is an automated report generated by Azure Logic Apps with AI-powered analysis using GPT-4.</p><p>For questions or issues, contact your IT operations team.</p></div></body></html>",
+                                                "Importance": "Normal"
+                                            },
+                                            "path": "/v2/Mail"
+                                        }
+                                    }
+                                }
+                            },
+                            "runAfter": {
+                                "Agent_Analysis": [
+                                    "Succeeded"
+                                ]
+                            }
+                        }
+                    },
+                    "parameters": {
+                        "$connections": {
+                            "type": "Object",
+                            "defaultValue": {}
+                        }
+                    }
+                },
+                "parameters": {
+                    "$connections": {
+                        "value": {
+                            "office365": {
+                                "id": "[subscriptionResourceId('Microsoft.Web/locations/managedApis', 'westeurope', 'office365')]",
+                                "connectionId": "[parameters('office365ConnectionId')]",
+                                "connectionName": "office365"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    ],
+    "outputs": {
+        "logicAppId": {
+            "type": "string",
+            "value": "[resourceId('Microsoft.Logic/workflows', parameters('logicAppName'))]"
+        },
+        "logicAppName": {
+            "type": "string",
+            "value": "[parameters('logicAppName')]"
+        }
+    }
+}
